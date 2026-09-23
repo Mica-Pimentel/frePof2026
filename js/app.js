@@ -1,9 +1,9 @@
-import { MP_VERSION } from "./core/vision.js?v=7";
-import maos from "./modes/maos.js?v=7";
-import rosto from "./modes/rosto.js?v=7";
-import corpo from "./modes/corpo.js?v=7";
-import objetos from "./modes/objetos.js?v=7";
-import fundo from "./modes/fundo.js?v=7";
+import { MP_VERSION } from "./core/vision.js?v=8";
+import maos from "./modes/maos.js?v=8";
+import rosto from "./modes/rosto.js?v=8";
+import corpo from "./modes/corpo.js?v=8";
+import objetos from "./modes/objetos.js?v=8";
+import fundo from "./modes/fundo.js?v=8";
 
 const MODES = [maos, rosto, corpo, objetos, fundo];
 

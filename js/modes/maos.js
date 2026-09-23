@@ -1,6 +1,6 @@
-import { mp, createTask, MODELS } from "../core/vision.js?v=7";
-import { h, section, bar, stat, toggle, slider, segmented, setText } from "../core/ui.js?v=7";
-import { drawLabel, scaleOf, dist, angle, INK, ACCENT, PALETTE } from "../core/draw.js?v=7";
+import { mp, createTask, MODELS } from "../core/vision.js?v=8";
+import { h, section, bar, stat, toggle, slider, segmented, setText } from "../core/ui.js?v=8";
+import { drawLabel, scaleOf, dist, angle, INK, ACCENT, PALETTE } from "../core/draw.js?v=8";
 
 const GESTOS = {
   None: ["Sem gesto", "✋"],
@@ -182,8 +182,9 @@ export default {
 
       const g = r.gestures[i]?.[0];
       const hd = r.handedness?.[i]?.[0];
-      // O modelo assume imagem espelhada; como a webcam chega "crua", invertemos o lado.
-      const side = hd?.categoryName === "Left" ? "Direita" : "Esquerda";
+      // O modelo já informa o lado correto para a imagem da câmera (frontal ou traseira).
+      // O espelhamento da tela é só visual e não afeta essa informação.
+      const side = hd?.categoryName === "Right" ? "Direita" : "Esquerda";
       const p = lm.map((q) => ({ x: q.x * W, y: q.y * H }));
       const f = fingerStates(p);
       let gesture = g?.categoryName || "None";

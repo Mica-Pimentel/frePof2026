@@ -1,6 +1,6 @@
-import { mp, createTask, MODELS } from "../core/vision.js?v=7";
-import { h, section, stat, segmented, setText } from "../core/ui.js?v=7";
-import { drawLabel, scaleOf, angle, INK, ACCENT } from "../core/draw.js?v=7";
+import { mp, createTask, MODELS } from "../core/vision.js?v=8";
+import { h, section, stat, segmented, setText } from "../core/ui.js?v=8";
+import { drawLabel, scaleOf, angle, INK, ACCENT } from "../core/draw.js?v=8";
 
 // Índices dos pontos do corpo no modelo de pose
 const P = {

@@ -1,5 +1,5 @@
-import { mp, createTask, MODELS } from "../core/vision.js?v=7";
-import { h, section, segmented, slider } from "../core/ui.js?v=7";
+import { mp, createTask, MODELS } from "../core/vision.js?v=8";
+import { h, section, segmented, slider } from "../core/ui.js?v=8";
 
 const hasFilter = typeof CanvasRenderingContext2D !== "undefined" && "filter" in CanvasRenderingContext2D.prototype;
 
