@@ -31,6 +31,9 @@ const modeTitle = $("modeTitle");
 const modeHint = $("modeHint");
 const modePanel = $("modePanel");
 const toastEl = $("toast");
+const flipBtn = $("flipBtn");
+const panel = $("panel");
+const sheetHandle = $("sheetHandle");
 
 $("mpVersion").textContent = MP_VERSION;
 
@@ -168,6 +171,11 @@ async function startCamera() {
     state.lastVideoTime = -1;
     emptyState.hidden = true;
     hud.hidden = false;
+    document.body.classList.add("cam-on");
+    // Câmera traseira não deve ficar espelhada
+    const facing = stream.getVideoTracks()[0]?.getSettings().facingMode;
+    if (facing === "environment") setMirror(false);
+    else if (facing === "user") setMirror(true);
     camBtn.disabled = false;
     shotBtn.disabled = false;
     camBtn.querySelector("span").textContent = "Desligar";
@@ -201,6 +209,7 @@ function stopCamera() {
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   emptyState.hidden = false;
   hud.hidden = true;
+  document.body.classList.remove("cam-on");
   shotBtn.disabled = true;
   camBtn.querySelector("span").textContent = "Ligar";
   state.mode?.reset?.();
@@ -220,6 +229,8 @@ async function listCameras() {
       })
     );
     cameraSelect.disabled = devices.length < 2;
+    flipBtn.hidden = devices.length < 2;
+    state.devices = devices;
   } catch {}
 }
 
@@ -280,7 +291,12 @@ function screenshot() {
   const a = document.createElement("a");
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
   a.download = `frepof-${state.mode.id}-${stamp}.png`;
-  c.toBlob((blob) => {
+  c.toBlob(async (blob) => {
+    // No celular, abre o menu de compartilhar (salvar na galeria, WhatsApp…)
+    const file = new File([blob], a.download, { type: "image/png" });
+    if (matchMedia("(pointer: coarse)").matches && navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === "AbortError") return; }
+    }
     a.href = URL.createObjectURL(blob);
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -288,13 +304,41 @@ function screenshot() {
   stage.classList.remove("flash");
   void stage.offsetWidth;
   stage.classList.add("flash");
-  toast("Foto salva");
+  if (!matchMedia("(pointer: coarse)").matches) toast("Foto salva");
 }
 
 // ---------- Controles ----------
 startBtn.addEventListener("click", startCamera);
 camBtn.addEventListener("click", () => (state.running ? stopCamera() : startCamera()));
 shotBtn.addEventListener("click", screenshot);
+
+flipBtn.addEventListener("click", () => {
+  const list = state.devices || [];
+  if (list.length < 2) return;
+  const current = state.stream?.getVideoTracks()[0]?.getSettings().deviceId;
+  const i = list.findIndex((d) => d.deviceId === current);
+  state.deviceId = list[(i + 1) % list.length].deviceId;
+  store.set("camera", state.deviceId);
+  startCamera();
+});
+
+// Gaveta do painel no celular
+function setSheet(open) {
+  panel.classList.toggle("expanded", open);
+  sheetHandle.setAttribute("aria-expanded", String(open));
+  if (!open) panel.scrollTop = 0;
+}
+sheetHandle.addEventListener("click", () => setSheet(!panel.classList.contains("expanded")));
+$("panelHead").addEventListener("click", () => setSheet(!panel.classList.contains("expanded")));
+// Arrastar a alça para cima/baixo
+let touchY = null;
+sheetHandle.addEventListener("touchstart", (e) => { touchY = e.touches[0].clientY; }, { passive: true });
+sheetHandle.addEventListener("touchend", (e) => {
+  if (touchY == null) return;
+  const dy = e.changedTouches[0].clientY - touchY;
+  if (Math.abs(dy) > 30) { e.preventDefault(); setSheet(dy < 0); }
+  touchY = null;
+});
 
 cameraSelect.addEventListener("change", () => {
   state.deviceId = cameraSelect.value;

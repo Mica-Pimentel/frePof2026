@@ -11,7 +11,38 @@ const GESTOS = {
   Thumb_Up: ["Joinha", "👍"],
   Victory: ["Paz e amor", "✌️"],
   ILoveYou: ["Te amo", "🤟"],
+  // Gestos extras (reconhecidos pela posição dos dedos, ver gestoExtra)
+  OK: ["OK", "👌"],
+  Rock: ["Rock", "🤘"],
+  Hang_Loose: ["Hang loose", "🤙"],
+  Arminha: ["Arminha", "👉"],
+  Dedo_Meio: ["Dedo do meio", "🖕"],
+  Mindinho: ["Mindinho", "🤞"],
+  Tres: ["Três", "3️⃣"],
+  Quatro: ["Quatro", "4️⃣"],
+  Pinca: ["Pinça", "🤏"],
 };
+
+/**
+ * O modelo do Google só conhece 7 gestos. Quando ele responde "None",
+ * tentamos reconhecer outros olhando quais dedos estão esticados.
+ * f = [polegar, indicador, médio, anelar, mínimo]
+ */
+function gestoExtra(f, p) {
+  const [t, i, m, a, n] = f;
+  const palma = dist(p[0], p[9]) || 1;
+  const pontasJuntas = dist(p[4], p[8]) < palma * 0.28;
+  if (pontasJuntas && m && a && n) return "OK";
+  if (pontasJuntas && !m && !a && !n) return "Pinca";
+  if (!i && m && !a && !n) return "Dedo_Meio";
+  if (i && !m && !a && n) return "Rock";
+  if (t && !i && !m && !a && n) return "Hang_Loose";
+  if (t && i && !m && !a && !n) return "Arminha";
+  if (!t && !i && !m && !a && n) return "Mindinho";
+  if (i && m && a && !n) return "Tres";
+  if (!t && i && m && a && n) return "Quatro";
+  return "None";
+}
 
 /** Quais dedos estão esticados: [polegar, indicador, médio, anelar, mínimo]. */
 function fingerStates(p) {
@@ -27,7 +58,7 @@ export default {
   id: "maos",
   label: "Mãos",
   title: "Gestos das mãos",
-  hint: "Reconhece até duas mãos, o gesto de cada uma e quantos dedos estão levantados.",
+  hint: "Reconhece até duas mãos, 16 gestos (joinha, paz e amor, OK, rock, hang loose…) e quantos dedos estão levantados.",
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-2a2 2 0 0 0-4 0"/></svg>`,
   usesDrawing: true,
 
@@ -130,13 +161,18 @@ export default {
       const side = hd?.categoryName === "Left" ? "Direita" : "Esquerda";
       const p = lm.map((q) => ({ x: q.x * W, y: q.y * H }));
       const f = fingerStates(p);
-      const gesture = g?.categoryName || "None";
+      let gesture = g?.categoryName || "None";
+      let score = g?.score ?? 0;
+      if (gesture === "None") {
+        gesture = gestoExtra(f, p);
+        if (gesture !== "None") score = 0.8; // regra geométrica (confiança aproximada)
+      }
 
       const xs = p.map((q) => q.x), ys = p.map((q) => q.y);
       const lx = mirrored ? Math.max(...xs) : Math.min(...xs);
       drawLabel(ctx, `${side} · ${(GESTOS[gesture] || GESTOS.None)[0]}`, lx, Math.min(...ys) - 10 * s, { mirrored, size: 13 * s });
 
-      return { side, gesture, score: g?.score ?? 0, f, n: f.filter(Boolean).length, p };
+      return { side, gesture, score, f, n: f.filter(Boolean).length, p };
     });
 
     if (this.drawOn) this.airDraw(hands, ctx, drawCtx, s, ts);
