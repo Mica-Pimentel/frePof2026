@@ -1,6 +1,6 @@
-import { mp, createTask, MODELS } from "../core/vision.js";
-import { h, section, stat, slider, setText } from "../core/ui.js";
-import { drawLabel, strokeBox, scaleOf, PALETTE } from "../core/draw.js";
+import { mp, createTask, MODELS } from "../core/vision.js?v=7";
+import { h, section, stat, slider, setText } from "../core/ui.js?v=7";
+import { drawLabel, strokeBox, scaleOf, PALETTE } from "../core/draw.js?v=7";
 
 // Tradução das 80 classes do conjunto COCO
 const PT = {

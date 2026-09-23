@@ -42,3 +42,7 @@ js/modes/*.js        # um arquivo por modo
 Para adicionar um modo novo, crie um arquivo em `js/modes/` com `load`, `mount`, `frame` e `dispose`, e registre em `js/app.js`.
 
 Para atualizar a biblioteca, troque a versão em `js/core/vision.js`.
+
+---
+
+Desenvolvido por **MPTech**.

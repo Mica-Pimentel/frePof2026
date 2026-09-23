@@ -1,6 +1,6 @@
-import { mp, createTask, MODELS } from "../core/vision.js";
-import { h, section, bar, stat, segmented, setText } from "../core/ui.js";
-import { drawLabel, scaleOf, INK, INK_SOFT, ACCENT } from "../core/draw.js";
+import { mp, createTask, MODELS } from "../core/vision.js?v=7";
+import { h, section, bar, stat, segmented, setText } from "../core/ui.js?v=7";
+import { drawLabel, scaleOf, INK, INK_SOFT, ACCENT } from "../core/draw.js?v=7";
 
 const FL = () => mp.FaceLandmarker;
 

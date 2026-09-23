@@ -32,11 +32,13 @@ export async function createTask(TaskClass, modelAssetPath, options = {}) {
   let lastError;
   for (const delegate of ["GPU", "CPU"]) {
     try {
-      return await TaskClass.createFromOptions(fileset, {
+      const task = await TaskClass.createFromOptions(fileset, {
         baseOptions: { modelAssetPath, delegate },
         runningMode: "VIDEO",
         ...options,
       });
+      task.__delegate = delegate; // para mostrar GPU/CPU na tela
+      return task;
     } catch (err) {
       lastError = err;
       console.warn(`[frePof] Falha ao criar tarefa com ${delegate}.`, err);

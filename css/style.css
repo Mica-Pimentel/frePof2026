@@ -533,12 +533,20 @@ kbd {
   .panel { position: static; }
 }
 .sheet-handle { display: none; }
+.credit { font-size: 12px; color: var(--muted); letter-spacing: .01em; }
+.credit strong { color: var(--text); font-weight: 600; }
+.foot .credit { margin-top: 6px; }
+.panel-credit { display: none; }
+.empty-credit { position: absolute; bottom: 14px; left: 0; right: 0; font-size: 12px; color: #8d8d96; }
+.empty-credit strong { color: #d8d8de; font-weight: 600; }
+.q-badge { font: 700 11px/1 var(--mono); letter-spacing: .02em; padding: 3px 5px; border-radius: 5px; border: 1.5px solid currentColor; }
+.pill.warn { background: rgba(229, 72, 77, .85); }
 .m-icon { display: none; }
 
 /* ============ Celular: layout de app de câmera ============
    Também vale para celulares com "Site para computador" ligado
    (tela de toque em pé), não só por largura. */
-@media (max-width: 760px), (hover: none) and (pointer: coarse) and (orientation: portrait) {
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (orientation: portrait), (any-pointer: coarse) and (orientation: portrait) and (max-width: 1100px) {
   :root { --top-h: 52px; --nav-h: 66px; --peek: 196px; --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
   html, body { overscroll-behavior: none; }
   body { min-height: 100dvh; font-size: 15px; }
@@ -634,6 +642,8 @@ kbd {
   .swatch { width: 30px; height: 30px; }
 
   .foot { display: none; }
+  .empty-credit { bottom: 34px; }
+  .panel-credit { display: block; text-align: center; padding-top: 14px; border-top: 1px solid var(--border); }
   .toast { bottom: calc(var(--nav-h) + var(--sab) + var(--peek) + 12px); }
 }
 

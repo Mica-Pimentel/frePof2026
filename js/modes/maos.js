@@ -1,6 +1,6 @@
-import { mp, createTask, MODELS } from "../core/vision.js";
-import { h, section, bar, stat, toggle, slider, setText } from "../core/ui.js";
-import { drawLabel, scaleOf, dist, INK, ACCENT, PALETTE } from "../core/draw.js";
+import { mp, createTask, MODELS } from "../core/vision.js?v=7";
+import { h, section, bar, stat, toggle, slider, segmented, setText } from "../core/ui.js?v=7";
+import { drawLabel, scaleOf, dist, angle, INK, ACCENT, PALETTE } from "../core/draw.js?v=7";
 
 const GESTOS = {
   None: ["Sem gesto", "✋"],
@@ -70,10 +70,17 @@ export default {
   size: 6,
   last: null,
   palmSince: 0,
+  penMode: "indicador", // "indicador" ou "pinca"
+  smooth: 0.6,          // 0 = sem suavização, 0.9 = muito suave
+  penOn: false,
+  onFrames: 0,
+  offFrames: 0,
+  lostAt: 0,
+  cursor: null,
 
   async load() {
     this.task = await createTask(mp.GestureRecognizer, MODELS.gesture, {
-      numHands: 2,
+      numHands: this.drawOn ? 1 : 2, // desenhando, uma mão basta (mais rápido)
       minHandDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5,
     });
@@ -88,6 +95,8 @@ export default {
 
   reset() {
     this.last = null;
+    this.penOn = false;
+    this.cursor = null;
   },
 
   mount(el, app) {
@@ -121,9 +130,25 @@ export default {
       swatches.append(b);
     });
 
+    const penHint = h("p", { class: "hero-sub" });
+    const syncHint = () => {
+      penHint.textContent = this.penMode === "pinca"
+        ? "Encoste o polegar no indicador para desenhar. Afaste para parar."
+        : "Levante só o indicador para desenhar. Dobre o dedo ou feche a mão para parar.";
+    };
+    syncHint();
+
     const drawControls = h("div", { class: "section", style: { gap: "12px" } },
+      segmented([["indicador", "☝️ Indicador"], ["pinca", "🤏 Pinça"]], this.penMode, (v) => {
+        this.penMode = v;
+        this.penOn = false;
+        this.last = null;
+        syncHint();
+      }),
+      penHint,
       swatches,
       slider("Espessura", { min: 2, max: 20, value: this.size, format: (v) => `${v}px` }, (v) => (this.size = v)),
+      slider("Suavização do traço", { min: 0, max: 0.9, step: 0.05, value: this.smooth, format: (v) => `${Math.round(v * 100)}%` }, (v) => (this.smooth = v)),
       h("div", { class: "row between" },
         h("span", { class: "hero-sub" }, "Mão aberta por 1,5 s também apaga"),
         h("button", { class: "btn sm", type: "button", onClick: () => app.clearDrawing() }, "Limpar")
@@ -135,9 +160,9 @@ export default {
       section(null, h("div", { class: "stats" }, this.total.el)),
       section("Mãos detectadas", this.emptyNote, ...this.cards.map((c) => c.card)),
       section("Desenhar no ar",
-        h("p", { class: "hero-sub" }, "Levante só o indicador para desenhar. Feche a mão para parar."),
         toggle("Ativar desenho", this.drawOn, (on) => {
           this.drawOn = on;
+          this.task?.setOptions({ numHands: on ? 1 : 2 });
           this.last = null;
           drawControls.hidden = !on;
         }),
@@ -181,30 +206,7 @@ export default {
   },
 
   airDraw(hands, ctx, drawCtx, s, now) {
-    // Caneta: indicador esticado e médio/anelar dobrados
-    const pen = hands.find((hd) => hd.f[1] && !hd.f[2] && !hd.f[3]);
-    if (pen) {
-      const tip = pen.p[8];
-      const pt = this.last ? { x: this.last.x * 0.45 + tip.x * 0.55, y: this.last.y * 0.45 + tip.y * 0.55 } : tip;
-      if (this.last) {
-        drawCtx.strokeStyle = this.color;
-        drawCtx.lineWidth = this.size * s;
-        drawCtx.lineCap = "round";
-        drawCtx.lineJoin = "round";
-        drawCtx.beginPath();
-        drawCtx.moveTo(this.last.x, this.last.y);
-        drawCtx.lineTo(pt.x, pt.y);
-        drawCtx.stroke();
-      }
-      this.last = pt;
-      ctx.beginPath();
-      ctx.arc(tip.x, tip.y, (this.size / 2 + 4) * s, 0, Math.PI * 2);
-      ctx.strokeStyle = this.color;
-      ctx.lineWidth = 2 * s;
-      ctx.stroke();
-    } else {
-      this.last = null;
-    }
+    this.updatePen(hands, ctx, drawCtx, s, now);
 
     // Mão totalmente aberta por 1,5 s apaga o desenho
     const palm = hands.some((hd) => hd.gesture === "Open_Palm");
@@ -225,6 +227,94 @@ export default {
       }
     } else {
       this.palmSince = 0;
+    }
+  },
+
+  /**
+   * Decide se a "caneta" está encostada, com histerese:
+   * - para LIGAR o dedo precisa estar claramente na posição por 2 quadros seguidos;
+   * - para DESLIGAR precisa estar claramente fora por 4 quadros seguidos;
+   * - na zona intermediária, mantém o estado anterior (evita o liga/desliga).
+   */
+  penSignal(hd) {
+    const p = hd.p;
+    const palma = dist(p[0], p[9]) || 1;
+    if (this.penMode === "pinca") {
+      const d = dist(p[4], p[8]) / palma;
+      const pos = { x: (p[4].x + p[8].x) / 2, y: (p[4].y + p[8].y) / 2 };
+      return { on: d < 0.25, off: d > 0.42, pos };
+    }
+    const indicador = angle(p[5], p[6], p[8]);  // ~180° = reto
+    const medio = angle(p[9], p[10], p[12]);
+    const anelar = angle(p[13], p[14], p[16]);
+    return {
+      on: indicador > 150 && medio < 130 && anelar < 140,
+      off: indicador < 120 || medio > 160,
+      pos: p[8],
+    };
+  },
+
+  updatePen(hands, ctx, drawCtx, s, now) {
+    // Usa a mão mais próxima do último ponto (para não pular de uma mão para outra)
+    let hd = hands[0];
+    if (this.cursor && hands.length > 1) {
+      hd = hands.reduce((a, b) => (dist(this.penSignal(a).pos, this.cursor) <= dist(this.penSignal(b).pos, this.cursor) ? a : b));
+    }
+
+    if (!hd) {
+      // Mão sumiu: tolera até 300 ms sem quebrar o traço
+      if (this.penOn && !this.lostAt) this.lostAt = now;
+      if (this.lostAt && now - this.lostAt > 300) { this.penOn = false; this.last = null; this.cursor = null; }
+      return;
+    }
+    const gap = this.lostAt ? now - this.lostAt : 0;
+    this.lostAt = 0;
+
+    const sig = this.penSignal(hd);
+    if (!this.penOn) {
+      this.onFrames = sig.on ? this.onFrames + 1 : 0;
+      if (this.onFrames >= 2) { this.penOn = true; this.offFrames = 0; this.last = null; }
+    } else {
+      this.offFrames = sig.off ? this.offFrames + 1 : 0;
+      if (this.offFrames >= 4) { this.penOn = false; this.onFrames = 0; this.last = null; }
+    }
+
+    // Suavização adaptativa: tremidas pequenas são filtradas, movimentos rápidos passam direto
+    const raw = sig.pos;
+    if (!this.cursor || gap > 300) this.cursor = { ...raw };
+    else {
+      const v = dist(raw, this.cursor);
+      const a = 1 - this.smooth * Math.exp(-v / (25 * s));
+      this.cursor = { x: this.cursor.x + (raw.x - this.cursor.x) * a, y: this.cursor.y + (raw.y - this.cursor.y) * a };
+    }
+    const pt = this.cursor;
+
+    if (this.penOn) {
+      if (this.last && dist(this.last, pt) < 0.25 * drawCtx.canvas.width) {
+        drawCtx.strokeStyle = this.color;
+        drawCtx.lineWidth = this.size * s;
+        drawCtx.lineCap = "round";
+        drawCtx.lineJoin = "round";
+        drawCtx.beginPath();
+        drawCtx.moveTo(this.last.x, this.last.y);
+        drawCtx.lineTo(pt.x, pt.y);
+        drawCtx.stroke();
+      }
+      this.last = { ...pt };
+    }
+
+    // Cursor: cheio = desenhando, vazio = só apontando
+    const r = (this.size / 2 + 5) * s;
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+    ctx.lineWidth = 2.5 * s;
+    ctx.strokeStyle = this.penOn ? this.color : "rgba(255,255,255,.85)";
+    ctx.stroke();
+    if (this.penOn) {
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, Math.max(2, (this.size / 2) * s), 0, Math.PI * 2);
+      ctx.fill();
     }
   },
 

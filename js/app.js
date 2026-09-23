@@ -1,9 +1,9 @@
-import { MP_VERSION } from "./core/vision.js";
-import maos from "./modes/maos.js";
-import rosto from "./modes/rosto.js";
-import corpo from "./modes/corpo.js";
-import objetos from "./modes/objetos.js";
-import fundo from "./modes/fundo.js";
+import { MP_VERSION } from "./core/vision.js?v=7";
+import maos from "./modes/maos.js?v=7";
+import rosto from "./modes/rosto.js?v=7";
+import corpo from "./modes/corpo.js?v=7";
+import objetos from "./modes/objetos.js?v=7";
+import fundo from "./modes/fundo.js?v=7";
 
 const MODES = [maos, rosto, corpo, objetos, fundo];
 
@@ -34,6 +34,14 @@ const toastEl = $("toast");
 const flipBtn = $("flipBtn");
 const panel = $("panel");
 const sheetHandle = $("sheetHandle");
+const qualityBtn = $("qualityBtn");
+const devPill = $("devPill");
+
+// Qualidade da câmera: menos pixels = análise mais rápida
+const QUALIDADES = {
+  rapida: { w: 640, h: 480, badge: "SD", label: "Rápida" },
+  hd: { w: 1280, h: 720, badge: "HD", label: "HD" },
+};
 
 $("mpVersion").textContent = MP_VERSION;
 
@@ -52,6 +60,9 @@ const state = {
   lastFrameAt: 0,
   loadToken: 0,
   looping: false,
+  starting: false,
+  facing: "user",
+  quality: "rapida",
 };
 
 const store = {
@@ -115,6 +126,7 @@ async function selectMode(id) {
     if (token !== state.loadToken) { next.dispose?.(); return; } // o usuário trocou de modo no meio
     state.ready = true;
     hideLoading();
+    showDelegate();
   } catch (err) {
     console.error(err);
     if (token !== state.loadToken) return;
@@ -152,16 +164,28 @@ async function startCamera() {
     toast("Seu navegador não permite acesso à câmera.");
     return;
   }
+  if (state.starting) return;
+  state.starting = true;
   startBtn.disabled = true;
+  flipBtn.disabled = true;
   try {
-    const constraints = {
-      audio: false,
-      video: state.deviceId
-        ? { deviceId: { exact: state.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-        : { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-    };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    // Fecha a câmera atual ANTES de abrir a nova: a maioria dos celulares
+    // não consegue manter duas câmeras abertas ao mesmo tempo.
     stopStream();
+    video.srcObject = null;
+    const q = QUALIDADES[state.quality];
+    const size = { width: { ideal: q.w }, height: { ideal: q.h }, frameRate: { ideal: 30 } };
+    let stream;
+    if (state.deviceId) {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { deviceId: { exact: state.deviceId }, ...size } });
+    } else {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { exact: state.facing }, ...size } });
+      } catch (e) {
+        if (e.name !== "OverconstrainedError" && e.name !== "NotFoundError") throw e;
+        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: state.facing, ...size } });
+      }
+    }
     state.stream = stream;
     video.srcObject = stream;
     await video.play();
@@ -173,9 +197,11 @@ async function startCamera() {
     hud.hidden = false;
     document.body.classList.add("cam-on");
     // Câmera traseira não deve ficar espelhada
-    const facing = stream.getVideoTracks()[0]?.getSettings().facingMode;
+    const facing = stream.getVideoTracks()[0]?.getSettings().facingMode || (state.deviceId ? null : state.facing);
     if (facing === "environment") setMirror(false);
     else if (facing === "user") setMirror(true);
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
     camBtn.disabled = false;
     shotBtn.disabled = false;
     camBtn.querySelector("span").textContent = "Desligar";
@@ -185,15 +211,19 @@ async function startCamera() {
     console.error(err);
     if (state.deviceId && (err.name === "OverconstrainedError" || err.name === "NotFoundError")) {
       state.deviceId = null; // câmera salva não existe mais: tenta a padrão
-      startBtn.disabled = false;
+      store.set("camera", "");
+      state.starting = false;
       return startCamera();
     }
     const msg = err.name === "NotAllowedError"
       ? "Permissão da câmera negada. Libere o acesso no navegador."
       : err.name === "NotFoundError" ? "Nenhuma câmera encontrada." : "Não foi possível abrir a câmera.";
     toast(msg);
+    if (!state.stream) stopCamera();
   } finally {
+    state.starting = false;
     startBtn.disabled = false;
+    flipBtn.disabled = false;
   }
 }
 
@@ -312,15 +342,42 @@ startBtn.addEventListener("click", startCamera);
 camBtn.addEventListener("click", () => (state.running ? stopCamera() : startCamera()));
 shotBtn.addEventListener("click", screenshot);
 
+// Botão de trocar: alterna entre câmera frontal e traseira
 flipBtn.addEventListener("click", () => {
-  const list = state.devices || [];
-  if (list.length < 2) return;
-  const current = state.stream?.getVideoTracks()[0]?.getSettings().deviceId;
-  const i = list.findIndex((d) => d.deviceId === current);
-  state.deviceId = list[(i + 1) % list.length].deviceId;
-  store.set("camera", state.deviceId);
+  const current = state.stream?.getVideoTracks()[0]?.getSettings().facingMode || state.facing;
+  state.facing = current === "environment" ? "user" : "environment";
+  state.deviceId = null;
+  store.set("camera", "");
   startCamera();
 });
+
+// Qualidade (Rápida/HD)
+function syncQuality() {
+  const q = QUALIDADES[state.quality];
+  $("qualityBadge").textContent = q.badge;
+  $("qualityLabel").textContent = q.label;
+}
+qualityBtn.addEventListener("click", () => {
+  state.quality = state.quality === "hd" ? "rapida" : "hd";
+  store.set("quality", state.quality);
+  syncQuality();
+  toast(state.quality === "hd" ? "Qualidade HD (mais lenta)" : "Qualidade rápida (mais FPS)");
+  if (state.running) startCamera();
+});
+
+// Mostra se o modelo roda na placa de vídeo (GPU) ou no processador (CPU)
+let warnedCpu = false;
+function showDelegate() {
+  const d = state.mode?.task?.__delegate;
+  devPill.hidden = !d;
+  if (!d) return;
+  devPill.textContent = d;
+  devPill.classList.toggle("warn", d === "CPU");
+  if (d === "CPU" && !warnedCpu) {
+    warnedCpu = true;
+    toast("Sem aceleração de GPU neste navegador: use a qualidade Rápida");
+  }
+}
 
 // Gaveta do painel no celular
 function setSheet(open) {
@@ -389,6 +446,8 @@ const api = {
 window.frepof = { state, selectMode, MODES };
 
 // ---------- Início ----------
-state.deviceId = store.get("camera");
+state.deviceId = store.get("camera") || null;
+state.quality = store.get("quality") || (matchMedia("(pointer: coarse)").matches ? "rapida" : "hd");
+syncQuality();
 setMirror(store.get("mirror") !== "0");
 selectMode(location.hash.slice(1) || store.get("mode") || "maos");
