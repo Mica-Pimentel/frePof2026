@@ -1,5 +1,5 @@
-import { mp, createTask, MODELS } from "../core/vision.js?v=8";
-import { h, section, segmented, slider } from "../core/ui.js?v=8";
+import { MODELS } from "../core/vision.js?v=9";
+import { h, section, segmented, slider } from "../core/ui.js?v=9";
 
 const hasFilter = typeof CanvasRenderingContext2D !== "undefined" && "filter" in CanvasRenderingContext2D.prototype;
 
@@ -16,17 +16,7 @@ export default {
   color: "#1f2330",
   image: null,
 
-  async load() {
-    this.task = await createTask(mp.ImageSegmenter, MODELS.selfie, {
-      outputCategoryMask: false,
-      outputConfidenceMasks: true,
-    });
-  },
-
-  dispose() {
-    this.task?.close();
-    this.task = null;
-  },
+  desc: { cls: "ImageSegmenter", method: "segmentForVideo", model: MODELS.selfie, options: { outputCategoryMask: false, outputConfidenceMasks: true } },
 
   mount(el, app) {
     const colorInput = h("input", { type: "color", class: "color-input", value: this.color, title: "Escolher cor" });
@@ -89,14 +79,13 @@ export default {
     }
   },
 
-  frame({ video, ts, ctx, canvas }) {
+  frame({ results, video, ctx, canvas }) {
     const W = canvas.width, H = canvas.height;
-    const r = this.task.segmentForVideo(video, ts);
-    const mask = r.confidenceMasks?.[0];
-    if (!mask) { r.close?.(); return; }
+    const mask = results.mask;
+    if (!mask) return;
 
     const mw = mask.width, mh = mask.height;
-    const data = mask.getAsFloat32Array();
+    const data = mask.data;
     this.ensureCanvases(mw, mh, W, H);
 
     // Máscara -> canal alfa (com transição suave na borda)
@@ -106,7 +95,6 @@ export default {
       px[j] = v <= 0 ? 0 : v >= 1 ? 255 : v * 255;
     }
     this.maskCtx.putImageData(this.maskImg, 0, 0);
-    r.close?.();
 
     // Camada da pessoa recortada
     const pc = this.personCtx;

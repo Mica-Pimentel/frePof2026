@@ -1,6 +1,6 @@
-import { mp, createTask, MODELS } from "../core/vision.js?v=8";
-import { h, section, bar, stat, segmented, setText } from "../core/ui.js?v=8";
-import { drawLabel, scaleOf, INK, INK_SOFT, ACCENT } from "../core/draw.js?v=8";
+import { mp, MODELS } from "../core/vision.js?v=9";
+import { h, section, bar, stat, segmented, setText } from "../core/ui.js?v=9";
+import { drawLabel, scaleOf, INK, INK_SOFT, ACCENT } from "../core/draw.js?v=9";
 
 const FL = () => mp.FaceLandmarker;
 
@@ -40,16 +40,9 @@ export default {
   baseline: null,
   calib: [],
 
-  async load() {
-    this.task = await createTask(FL(), MODELS.face, {
-      numFaces: 1,
-      outputFaceBlendshapes: true,
-    });
-  },
+  desc: { cls: "FaceLandmarker", method: "detectForVideo", model: MODELS.face, options: { numFaces: 1, outputFaceBlendshapes: true } },
 
   dispose() {
-    this.task?.close();
-    this.task = null;
     this.du = null;
   },
 
@@ -81,8 +74,7 @@ export default {
     );
   },
 
-  frame({ video, ts, ctx, canvas, mirrored, ui }) {
-    const r = this.task.detectForVideo(video, ts);
+  frame({ results: r, ctx, canvas, mirrored, ui }) {
     const W = canvas.width, H = canvas.height, s = scaleOf(canvas);
     this.du ??= new mp.DrawingUtils(ctx);
     const F = FL();

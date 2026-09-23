@@ -1,9 +1,10 @@
-import { MP_VERSION } from "./core/vision.js?v=8";
-import maos from "./modes/maos.js?v=8";
-import rosto from "./modes/rosto.js?v=8";
-import corpo from "./modes/corpo.js?v=8";
-import objetos from "./modes/objetos.js?v=8";
-import fundo from "./modes/fundo.js?v=8";
+import { MP_VERSION } from "./core/vision.js?v=9";
+import { getEngine, fallbackToMain } from "./core/engine.js?v=9";
+import maos from "./modes/maos.js?v=9";
+import rosto from "./modes/rosto.js?v=9";
+import corpo from "./modes/corpo.js?v=9";
+import objetos from "./modes/objetos.js?v=9";
+import fundo from "./modes/fundo.js?v=9";
 
 const MODES = [maos, rosto, corpo, objetos, fundo];
 
@@ -120,10 +121,24 @@ async function selectMode(id) {
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   stage.classList.toggle("show-drawing", !!next.usesDrawing);
 
+  state.results = null;
+  state.inflight = false;
   showLoading(`Carregando modelo de ${next.label.toLowerCase()}…`);
   try {
-    await next.load();
-    if (token !== state.loadToken) { next.dispose?.(); return; } // o usuário trocou de modo no meio
+    let engine = await getEngine();
+    let info;
+    try {
+      info = await engine.load(next.id, next.desc);
+    } catch (err) {
+      if (engine.kind !== "worker") throw err;
+      // O Worker não conseguiu (ex.: navegador sem GPU em Worker): tenta na página
+      console.warn("[frePof] Worker falhou, tentando na página principal", err);
+      engine = await fallbackToMain();
+      info = await engine.load(next.id, next.desc);
+    }
+    if (token !== state.loadToken) return; // o usuário trocou de modo no meio
+    state.engine = engine;
+    state.delegate = info.delegate;
     state.ready = true;
     hideLoading();
     showDelegate();
@@ -280,24 +295,40 @@ video.addEventListener("resize", resizeCanvases);
 function loop(now) {
   if (!state.running) { state.looping = false; return; }
 
-  if (state.ready && video.readyState >= 2 && video.currentTime !== state.lastVideoTime) {
+  // 1) Envia um quadro novo para análise, se o motor estiver livre.
+  //    A análise roda em paralelo (Worker) — a página não fica esperando.
+  if (state.ready && !state.inflight && video.readyState >= 2 && video.currentTime !== state.lastVideoTime) {
     state.lastVideoTime = video.currentTime;
-    const t0 = performance.now();
+    state.inflight = true;
+    const mode = state.mode, token = state.loadToken, t0 = performance.now();
+    state.engine.infer(mode.id, video).then((res) => {
+      if (token !== state.loadToken) return; // resultado de um modo antigo
+      state.results = res;
+      state.fresh = true;
+      const dt = performance.now() - t0;
+      state.ms = state.ms ? state.ms * 0.9 + dt * 0.1 : dt;
+      const t = performance.now();
+      if (state.lastFrameAt) {
+        const inst = 1000 / (t - state.lastFrameAt);
+        state.fps = state.fps ? state.fps * 0.9 + inst * 0.1 : inst;
+      }
+      state.lastFrameAt = t;
+    }).catch((err) => console.error(err)).finally(() => {
+      if (token === state.loadToken) state.inflight = false;
+    });
+  }
+
+  // 2) Desenha o resultado mais recente (só quando chega um novo).
+  if (state.fresh && state.results) {
+    state.fresh = false;
     const ui = now - state.lastUi > 90; // atualiza o painel ~11x por segundo
     if (ui) state.lastUi = now;
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     try {
-      state.mode.frame({ video, ts: t0, ctx, canvas: overlay, drawCtx, drawCanvas, mirrored: state.mirrored, ui });
+      state.mode.frame({ results: state.results, video, now: performance.now(), ctx, canvas: overlay, drawCtx, drawCanvas, mirrored: state.mirrored, ui });
     } catch (err) {
       console.error(err);
     }
-    const dt = performance.now() - t0;
-    state.ms = state.ms ? state.ms * 0.9 + dt * 0.1 : dt;
-    if (state.lastFrameAt) {
-      const inst = 1000 / (now - state.lastFrameAt);
-      state.fps = state.fps ? state.fps * 0.9 + inst * 0.1 : inst;
-    }
-    state.lastFrameAt = now;
     if (ui) {
       fpsPill.textContent = `${Math.round(state.fps)} fps`;
       msPill.textContent = `${state.ms.toFixed(0)} ms`;
@@ -368,10 +399,10 @@ qualityBtn.addEventListener("click", () => {
 // Mostra se o modelo roda na placa de vídeo (GPU) ou no processador (CPU)
 let warnedCpu = false;
 function showDelegate() {
-  const d = state.mode?.task?.__delegate;
+  const d = state.delegate;
   devPill.hidden = !d;
   if (!d) return;
-  devPill.textContent = d;
+  devPill.textContent = d + (state.engine?.kind === "worker" ? " · paralelo" : "");
   devPill.classList.toggle("warn", d === "CPU");
   if (d === "CPU" && !warnedCpu) {
     warnedCpu = true;
@@ -438,6 +469,7 @@ window.addEventListener("hashchange", () => selectMode(location.hash.slice(1)));
 // API exposta aos modos
 const api = {
   toast,
+  setOptions(opts) { state.engine?.setOptions(state.mode.id, opts).catch(console.error); },
   clearDrawing() { drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); },
   get mirrored() { return state.mirrored; },
 };

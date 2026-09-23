@@ -1,6 +1,6 @@
-import { mp, createTask, MODELS } from "../core/vision.js?v=8";
-import { h, section, stat, slider, setText } from "../core/ui.js?v=8";
-import { drawLabel, strokeBox, scaleOf, PALETTE } from "../core/draw.js?v=8";
+import { MODELS } from "../core/vision.js?v=9";
+import { h, section, stat, slider, setText } from "../core/ui.js?v=9";
+import { drawLabel, strokeBox, scaleOf, PALETTE } from "../core/draw.js?v=9";
 
 // Tradução das 80 classes do conjunto COCO
 const PT = {
@@ -33,19 +33,11 @@ export default {
   task: null,
   threshold: 0.45,
 
-  async load() {
-    this.task = await createTask(mp.ObjectDetector, MODELS.objects, {
-      scoreThreshold: this.threshold,
-      maxResults: 12,
-    });
+  get desc() {
+    return { cls: "ObjectDetector", method: "detectForVideo", model: MODELS.objects, options: { scoreThreshold: this.threshold, maxResults: 12 } };
   },
 
-  dispose() {
-    this.task?.close();
-    this.task = null;
-  },
-
-  mount(el) {
+  mount(el, app) {
     this.sTotal = stat("objetos na cena", { big: true });
     this.list = h("div", { class: "list" });
     this.empty = h("p", { class: "empty-note" }, "Nada detectado ainda.");
@@ -56,14 +48,13 @@ export default {
       section("Ajustes",
         slider("Confiança mínima", { min: 0.2, max: 0.9, step: 0.05, value: this.threshold, format: (v) => `${Math.round(v * 100)}%` }, (v) => {
           this.threshold = v;
-          this.task?.setOptions({ scoreThreshold: v });
+          app.setOptions({ scoreThreshold: v });
         })
       )
     );
   },
 
-  frame({ video, ts, ctx, canvas, mirrored, ui }) {
-    const r = this.task.detectForVideo(video, ts);
+  frame({ results: r, ctx, canvas, mirrored, ui }) {
     const s = scaleOf(canvas);
     const counts = new Map();
 

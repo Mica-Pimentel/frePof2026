@@ -1,6 +1,6 @@
-import { mp, createTask, MODELS } from "../core/vision.js?v=8";
-import { h, section, stat, segmented, setText } from "../core/ui.js?v=8";
-import { drawLabel, scaleOf, angle, INK, ACCENT } from "../core/draw.js?v=8";
+import { mp, MODELS } from "../core/vision.js?v=9";
+import { h, section, stat, segmented, setText } from "../core/ui.js?v=9";
+import { drawLabel, scaleOf, angle, INK, ACCENT } from "../core/draw.js?v=9";
 
 // Índices dos pontos do corpo no modelo de pose
 const P = {
@@ -41,13 +41,9 @@ export default {
   phase: 0, // 0 = posição inicial, 1 = posição final
   hist: [],
 
-  async load() {
-    this.task = await createTask(mp.PoseLandmarker, MODELS.pose, { numPoses: 1 });
-  },
+  desc: { cls: "PoseLandmarker", method: "detectForVideo", model: MODELS.pose, options: { numPoses: 1 } },
 
   dispose() {
-    this.task?.close();
-    this.task = null;
     this.du = null;
   },
 
@@ -84,8 +80,7 @@ export default {
     );
   },
 
-  frame({ video, ts, ctx, canvas, mirrored, ui }) {
-    const r = this.task.detectForVideo(video, ts);
+  frame({ results: r, ctx, canvas, mirrored, ui }) {
     const W = canvas.width, H = canvas.height, s = scaleOf(canvas);
     this.du ??= new mp.DrawingUtils(ctx);
 

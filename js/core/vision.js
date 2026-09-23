@@ -16,33 +16,3 @@ export const MODELS = {
   objects: `${M}/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite`,
   selfie: `${M}/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite`,
 };
-
-let filesetPromise = null;
-function getFileset() {
-  filesetPromise ??= mp.FilesetResolver.forVisionTasks(WASM_URL);
-  return filesetPromise;
-}
-
-/**
- * Cria uma tarefa do MediaPipe em modo VIDEO.
- * Tenta usar a GPU e, se não der, cai para a CPU automaticamente.
- */
-export async function createTask(TaskClass, modelAssetPath, options = {}) {
-  const fileset = await getFileset();
-  let lastError;
-  for (const delegate of ["GPU", "CPU"]) {
-    try {
-      const task = await TaskClass.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath, delegate },
-        runningMode: "VIDEO",
-        ...options,
-      });
-      task.__delegate = delegate; // para mostrar GPU/CPU na tela
-      return task;
-    } catch (err) {
-      lastError = err;
-      console.warn(`[frePof] Falha ao criar tarefa com ${delegate}.`, err);
-    }
-  }
-  throw lastError;
-}

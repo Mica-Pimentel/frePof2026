@@ -1,6 +1,6 @@
-import { mp, createTask, MODELS } from "../core/vision.js?v=8";
-import { h, section, bar, stat, toggle, slider, segmented, setText } from "../core/ui.js?v=8";
-import { drawLabel, scaleOf, dist, angle, INK, ACCENT, PALETTE } from "../core/draw.js?v=8";
+import { mp, MODELS } from "../core/vision.js?v=9";
+import { h, section, bar, stat, toggle, slider, segmented, setText } from "../core/ui.js?v=9";
+import { drawLabel, scaleOf, dist, angle, INK, ACCENT, PALETTE } from "../core/draw.js?v=9";
 
 const GESTOS = {
   None: ["Sem gesto", "✋"],
@@ -78,17 +78,15 @@ export default {
   lostAt: 0,
   cursor: null,
 
-  async load() {
-    this.task = await createTask(mp.GestureRecognizer, MODELS.gesture, {
-      numHands: this.drawOn ? 1 : 2, // desenhando, uma mão basta (mais rápido)
-      minHandDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
+  // Qual modelo usar (carregado pelo motor, no Worker)
+  get desc() {
+    return {
+      cls: "GestureRecognizer", method: "recognizeForVideo", model: MODELS.gesture,
+      options: { numHands: this.drawOn ? 1 : 2, minHandDetectionConfidence: 0.5, minTrackingConfidence: 0.5 },
+    };
   },
 
   dispose() {
-    this.task?.close();
-    this.task = null;
     this.du = null;
     this.last = null;
   },
@@ -162,7 +160,7 @@ export default {
       section("Desenhar no ar",
         toggle("Ativar desenho", this.drawOn, (on) => {
           this.drawOn = on;
-          this.task?.setOptions({ numHands: on ? 1 : 2 });
+          app.setOptions({ numHands: on ? 1 : 2 }); // desenhando, uma mão basta (mais rápido)
           this.last = null;
           drawControls.hidden = !on;
         }),
@@ -171,8 +169,7 @@ export default {
     );
   },
 
-  frame({ video, ts, ctx, canvas, drawCtx, mirrored, ui }) {
-    const r = this.task.recognizeForVideo(video, ts);
+  frame({ results: r, now: ts, ctx, canvas, drawCtx, mirrored, ui }) {
     const W = canvas.width, H = canvas.height, s = scaleOf(canvas);
     this.du ??= new mp.DrawingUtils(ctx);
 
